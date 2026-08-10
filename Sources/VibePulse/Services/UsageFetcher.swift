@@ -52,6 +52,20 @@ final class UsageFetcher: UsageFetching, @unchecked Sendable {
       return try executeCommand(command)
     }
 
+    let url = try Self.makeServerURL(
+      configuredURL: configuredURL,
+      agent: agent,
+      now: Date(),
+      timeZone: TimeZone.current)
+    return try Data(contentsOf: url)
+  }
+
+  static func makeServerURL(
+    configuredURL: String,
+    agent: String?,
+    now: Date,
+    timeZone: TimeZone
+  ) throws -> URL {
     let baseURL = configuredURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     guard
       var components = URLComponents(
@@ -59,8 +73,19 @@ final class UsageFetcher: UsageFetching, @unchecked Sendable {
     else {
       throw FetchError.invalidServerURL(configuredURL)
     }
+
+    let formatter = DateFormatter()
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = timeZone
+    formatter.dateFormat = "yyyy-MM-dd"
+    let from = formatter.string(
+      from: now.addingTimeInterval(-30 * 24 * 60 * 60))
+
     components.queryItems = [
-      URLQueryItem(name: "timezone", value: TimeZone.current.identifier),
+      URLQueryItem(name: "from", value: from),
+      URLQueryItem(name: "no_default_range", value: "true"),
+      URLQueryItem(name: "timezone", value: timeZone.identifier),
       URLQueryItem(name: "breakdowns", value: "true"),
     ]
     if let agent {
@@ -69,7 +94,7 @@ final class UsageFetcher: UsageFetching, @unchecked Sendable {
     guard let url = components.url else {
       throw FetchError.invalidServerURL(configuredURL)
     }
-    return try Data(contentsOf: url)
+    return url
   }
 
   private func withRetry<T>(_ operation: () throws -> T) throws -> T {
